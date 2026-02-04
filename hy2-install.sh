@@ -323,6 +323,15 @@ collect_user_input() {
     fi
 }
 
+install_basic_dependencies() {
+    # 静默安装 dig 命令所需的 dnsutils
+    if ! command -v dig &> /dev/null; then
+        print_info "安装基础组件..."
+        apt update -qq > /dev/null 2>&1
+        apt install -y -qq dnsutils > /dev/null 2>&1
+    fi
+}
+
 install_dependencies() {
     print_step "安装依赖"
     
@@ -578,6 +587,9 @@ main() {
     check_root
     check_os
     check_existing_installation
+    
+    # 先安装基础依赖（dig 命令需要 dnsutils）
+    install_basic_dependencies
     
     # 收集配置
     collect_user_input
