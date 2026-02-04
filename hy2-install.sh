@@ -3,6 +3,7 @@
 #===============================================================================
 # Hysteria 2 一键安装脚本
 # 适用于 Debian/Ubuntu 系统
+# 项目地址: https://github.com/1439616687/hy2-go-go-go
 #===============================================================================
 
 set -e
@@ -134,12 +135,18 @@ check_existing_installation() {
 #-------------------------------------------------------------------------------
 # 功能函数
 #-------------------------------------------------------------------------------
+get_hysteria_version() {
+    # 从 "Version:    v2.7.0" 格式中提取版本号
+    hysteria version 2>&1 | grep "Version:" | awk '{print $2}'
+}
+
 update_hysteria() {
     print_step "更新 Hysteria 2"
     bash <(curl -fsSL https://get.hy2.sh/)
     systemctl restart hysteria-server
     print_success "更新完成"
-    hysteria version
+    local version=$(get_hysteria_version)
+    [[ -n "$version" ]] && print_info "当前版本: $version"
 }
 
 show_current_config() {
@@ -391,7 +398,11 @@ install_hysteria() {
     
     if command -v hysteria &> /dev/null; then
         print_success "Hysteria 2 安装完成"
-        print_info "版本: $(hysteria version 2>/dev/null | head -1)"
+        # 从 "Version:    v2.7.0" 格式中提取版本号
+        local version=$(get_hysteria_version)
+        if [[ -n "$version" ]]; then
+            print_info "版本: $version"
+        fi
     else
         print_error "Hysteria 2 安装失败"
         exit 1
