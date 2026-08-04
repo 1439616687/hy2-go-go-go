@@ -42,6 +42,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/1439616687/hy2-go-go-go/main
 - 一台 Debian / Ubuntu（systemd）VPS，公网 IPv4，root 权限
 - 一个域名，A 记录指向 VPS，**不要开 CDN 代理**（如 Cloudflare 橙云需改为「仅 DNS」）
 - 云厂商安全组/防火墙（阿里云、AWS、Oracle 等）在控制台放行 `443/udp` 与 `80/tcp`——脚本里的 UFW 替代不了这一步
+- OpenVZ / LXC 等共享内核的容器无法使用 UFW（脚本会自动检测并跳过），防火墙只能在服务商面板配置；NAT 型 VPS 还需在面板映射 UDP 443 和 TCP 80，否则 ACME 签不了证书
 
 ## 部署后
 

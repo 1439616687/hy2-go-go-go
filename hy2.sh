@@ -9,7 +9,7 @@
 #
 set -Eeuo pipefail
 
-readonly SCRIPT_VERSION="1.0.0"
+readonly SCRIPT_VERSION="1.0.1"
 readonly HY2_DIR="/etc/hysteria"
 readonly HY2_CONFIG="${HY2_DIR}/config.yaml"
 readonly NODE_INFO="${HY2_DIR}/node.txt"
@@ -146,6 +146,16 @@ esac
 command -v apt-get   >/dev/null || die "未找到 apt-get"
 command -v systemctl >/dev/null || die "未找到 systemctl，本脚本仅支持 systemd 系统"
 
+# 容器环境检测：OpenVZ/LXC 等与宿主机共享内核，iptables/nftables 常受限，UFW 多半用不了
+CONTAINER=0
+VIRT="$(systemd-detect-virt 2>/dev/null || true)"
+case "$VIRT" in
+  openvz|lxc|lxc-libvirt|systemd-nspawn)
+    CONTAINER=1
+    warn "检测到 ${VIRT} 容器：内核受限，UFW 可能无法启用（失败会自动跳过，不影响部署）"
+    ;;
+esac
+
 # ---------- 1. 安装依赖 ----------
 
 step "1/7 安装依赖"
@@ -257,7 +267,12 @@ fi
 
 USE_UFW=0
 info "防火墙将放行：${SSH_PORT}/tcp（SSH）、443/udp（Hysteria 2）、80/tcp（ACME 签发与续期）"
-if confirm "由脚本配置 UFW 防火墙吗（推荐）" y; then
+UFW_DEFAULT="y"
+if (( CONTAINER )); then
+  UFW_DEFAULT="n"
+  info "当前为容器环境，建议跳过 UFW，改用服务商面板的防火墙"
+fi
+if confirm "由脚本配置 UFW 防火墙吗" "$UFW_DEFAULT"; then
   USE_UFW=1
 fi
 
@@ -356,11 +371,26 @@ ok "配置已写入"
 
 step "6/7 配置防火墙"
 if (( USE_UFW )); then
-  run ufw allow "${SSH_PORT}/tcp"   # 先放行 SSH，避免断连
-  run ufw allow 443/udp             # Hysteria 2 本体
-  run ufw allow 80/tcp              # ACME HTTP-01 签发+续期（长期保持）
-  run bash -c 'yes | ufw enable'
-  run ufw status
+  if (( DRY_RUN )); then
+    info "[dry-run] ufw allow ${SSH_PORT}/tcp; ufw allow 443/udp; ufw allow 80/tcp; yes | ufw enable; ufw status"
+  else
+    UFW_OK=1
+    ufw allow "${SSH_PORT}/tcp" || UFW_OK=0   # 先放行 SSH，避免断连
+    ufw allow 443/udp           || UFW_OK=0   # Hysteria 2 本体
+    ufw allow 80/tcp            || UFW_OK=0   # ACME HTTP-01 签发+续期（长期保持）
+    if (( UFW_OK )); then
+      if ! bash -c 'yes | ufw enable'; then
+        UFW_OK=0
+      fi
+    fi
+    if (( UFW_OK )); then
+      ufw status || true
+      ok "UFW 已启用"
+    else
+      warn "UFW 启用失败：内核无法加载 iptables/nftables 规则（常见于 OpenVZ/LXC 容器）"
+      warn "已跳过防火墙配置，不影响 Hysteria 2 运行；请在服务商防火墙面板放行 443/udp 与 80/tcp"
+    fi
+  fi
 else
   warn "已跳过 UFW 配置，请确保系统与云厂商防火墙放行 443/udp 与 80/tcp"
 fi
