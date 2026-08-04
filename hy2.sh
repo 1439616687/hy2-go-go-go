@@ -9,7 +9,7 @@
 #
 set -Eeuo pipefail
 
-readonly SCRIPT_VERSION="1.0.1"
+readonly SCRIPT_VERSION="1.0.2"
 readonly HY2_DIR="/etc/hysteria"
 readonly HY2_CONFIG="${HY2_DIR}/config.yaml"
 readonly NODE_INFO="${HY2_DIR}/node.txt"
@@ -356,14 +356,20 @@ if (( DRY_RUN )); then
   info "[dry-run] 将写入以下配置："
   printf '%s\n' "$CONFIG"
 else
-  install -d -m 750 "$HY2_DIR"
+  install -d -m 755 "$HY2_DIR"
   if [[ -f "$HY2_CONFIG" ]]; then
     BACKUP="${HY2_CONFIG}.bak.$(date -u +%Y%m%dT%H%M%SZ)"
     cp -a "$HY2_CONFIG" "$BACKUP"
     info "旧配置已备份到 ${BACKUP}"
   fi
   printf '%s\n' "$CONFIG" >"$HY2_CONFIG"
-  chmod 600 "$HY2_CONFIG"
+  # 官方脚本以独立的 hysteria 用户运行服务，必须保证它能读到配置
+  if id hysteria >/dev/null 2>&1; then
+    chown root:hysteria "$HY2_CONFIG"
+    chmod 640 "$HY2_CONFIG"
+  else
+    chmod 600 "$HY2_CONFIG"
+  fi
 fi
 ok "配置已写入"
 
@@ -406,7 +412,7 @@ else
   sleep 3
   if ! systemctl is-active --quiet "$HY2_SERVICE"; then
     journalctl -u "$HY2_SERVICE" -n 20 --no-pager >&2 || true
-    die "服务启动失败，请根据上方日志排查（常见问题：DNS 未指向本机、80/tcp 不可达导致证书签发失败）"
+    die "服务启动失败，请根据上方日志排查（常见问题：DNS 未指向本机、80/tcp 不可达导致证书签发失败、配置权限导致 hysteria 用户无法读取）"
   fi
   if ss -ulnp 2>/dev/null | grep -q ':443 '; then
     ok "服务运行中，UDP/443 正在监听"
